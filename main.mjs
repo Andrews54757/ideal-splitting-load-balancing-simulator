@@ -164,7 +164,6 @@ function tick(shouldUpdateDOM) {
         if (shouldUpdateDOM) {
             currentTask.splitterElement.style.width = currentTask.input * widthRatio + "px";
             currentTask.loaderElement.style.width = Math.ceil((currentTask.processed - (currentTask.loader.progress / 64)) * widthRatio) + "px";
-            currentTask.loader.labelElement.innerText = "Loader " + (currentTask.loader.id + 1) + " (" + currentTask.loader.queued + ")";
         }
     }
 
