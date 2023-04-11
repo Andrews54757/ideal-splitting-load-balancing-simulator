@@ -15,7 +15,7 @@ const config = {
 let controls = gui.addFolder("Simulation Controls");
 
 controls.add(config, 'running').onChange(onRunningChange);
-controls.add(config, 'logarithmicSimulationSpeed', 0, 6, 0.1);
+controls.add(config, 'logarithmicSimulationSpeed', 0, 8, 0.1);
 
 let simulationConfig = gui.addFolder("Simulation Config");
 simulationConfig.add(config, 'seed').onChange(onConfigChange);
@@ -132,29 +132,35 @@ function getNextLoader() {
 }
 
 
-
+function createLoaderRenderElements(task) {
+    if (task.isRenderingInLoader) throw new Error("bad call")
+    task.isRenderingInLoader = true;
+    task.loaderElement = document.createElement("div");
+    task.loaderElement.classList.add("task");
+    task.loaderElement.innerText = task.id;
+    task.loaderElement.style.backgroundColor = `rgb(${task.color.r}, ${task.color.g}, ${task.color.b})`;
+    task.loader.taskListElement.appendChild(task.loaderElement);
+}
 function tick(shouldUpdateDOM) {
 
     if (tickCounter % 2 == 0) { // half-speed
         if (!currentTask || currentTask.input <= 0) {
             if (currentTask) {
-                splitterTasks.removeChild(currentTask.splitterElement);
+                if (currentTask.splitterElement) splitterTasks.removeChild(currentTask.splitterElement);
                 currentTask.splitterElement = null;
             }
             currentTask = getNewTask();
             currentTask.loader = getNextLoader();
             currentTask.loader.taskQueue.push(currentTask);
+        }
+
+        if (!currentTask.isRenderingInSplitter && shouldUpdateDOM) {
+            currentTask.isRenderingInSplitter = true;
             currentTask.splitterElement = document.createElement("div");
             currentTask.splitterElement.classList.add("task");
             currentTask.splitterElement.innerText = currentTask.id;
             currentTask.splitterElement.style.backgroundColor = `rgb(${currentTask.color.r}, ${currentTask.color.g}, ${currentTask.color.b})`;
             splitterTasks.appendChild(currentTask.splitterElement);
-
-            currentTask.loaderElement = document.createElement("div");
-            currentTask.loaderElement.classList.add("task");
-            currentTask.loaderElement.innerText = currentTask.id;
-            currentTask.loaderElement.style.backgroundColor = `rgb(${currentTask.color.r}, ${currentTask.color.g}, ${currentTask.color.b})`;
-            currentTask.loader.taskListElement.appendChild(currentTask.loaderElement);
         }
 
 
@@ -163,6 +169,10 @@ function tick(shouldUpdateDOM) {
         currentTask.processed++;
         if (shouldUpdateDOM) {
             currentTask.splitterElement.style.width = currentTask.input * widthRatio + "px";
+
+            if (!currentTask.isRenderingInLoader) {
+                createLoaderRenderElements(currentTask);
+            }
             currentTask.loaderElement.style.width = Math.ceil((currentTask.processed - (currentTask.loader.progress / 64)) * widthRatio) + "px";
         }
     }
@@ -186,11 +196,22 @@ function tick(shouldUpdateDOM) {
             loader.taskQueue[0].output++;
 
             if (loader.taskQueue[0].processed <= 0) {
-                loader.taskListElement.removeChild(loader.taskQueue[0].loaderElement);
+                if (loader.taskQueue[0].isRenderingInLoader)
+                    loader.taskListElement.removeChild(loader.taskQueue[0].loaderElement);
                 loader.taskQueue.shift();
             }
         }
+
+
         if (shouldUpdateDOM) {
+
+            loader.taskQueue.forEach((task) => {
+                if (!task.isRenderingInLoader) {
+                    createLoaderRenderElements(task);
+                    task.loaderElement.style.width = Math.ceil((task.processed - (task.loader.progress / 64)) * widthRatio) + "px";
+                }
+            })
+
             loader.labelElement.innerText = "Loader " + (loader.id + 1) + " (" + loader.queued + ")";
 
             if (loader.taskQueue.length) {
@@ -237,3 +258,5 @@ function mainLoop() { // hopperspeed
 }
 resetSim();
 mainLoop();
+
+window.loaders = loaders;
