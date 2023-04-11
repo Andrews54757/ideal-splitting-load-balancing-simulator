@@ -189,7 +189,7 @@ function tick(shouldUpdateDOM) {
             }
         }
         if (shouldUpdateDOM) {
-            currentTask.loader.labelElement.innerText = "Loader " + (currentTask.loader.id + 1) + " (" + currentTask.loader.queued + ")";
+            loader.labelElement.innerText = "Loader " + (loader.id + 1) + " (" + loader.queued + ")";
 
             if (loader.taskQueue.length) {
                 let task = loader.taskQueue[0];
