@@ -220,12 +220,13 @@ function mainLoop() { // hopperspeed
     if (config.running) {
         let multiplicity = 0;
         while (delta >= 1) {
-            tick(multiplicity === 0);
             delta--;
+            tick(delta < 1);
             multiplicity++;
 
             let now2 = performance.now();
             if (now2 - now >= 40) {
+                if (delta >= 1) tick(true);
                 delta = 0;
                 break;
             }
