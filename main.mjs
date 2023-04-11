@@ -8,6 +8,7 @@ const config = {
     seed: "0000000000",
     loaderSpeed: 4,
     thresholdSize: 1,
+    thresholdResolution: 1
 }
 
 let controls = gui.addFolder("Simulation Controls");
@@ -19,6 +20,7 @@ let simulationConfig = gui.addFolder("Simulation Config");
 simulationConfig.add(config, 'seed').onChange(onConfigChange);
 simulationConfig.add(config, 'loaderSpeed', 1, 8, 1).onChange(onConfigChange);
 simulationConfig.add(config, 'thresholdSize', 1, 100, 1).onChange(onConfigChange);
+simulationConfig.add(config, 'thresholdResolution', 1, 100, 1).onChange(onConfigChange);
 gui.width = 500;
 
 let rng;
@@ -84,10 +86,13 @@ function resetSim() {
 
 function getNextLoader() {
     let minIndex = -1
+    let threshold = Math.ceil(config.thresholdSize / config.thresholdResolution);
+    let minValue = -1;
     for (let i = 0; i < loaders.length; i++) {
-        if (loaders[i].queued >= config.thresholdSize) continue;
-        if (minIndex == -1 || loaders[i].queued < loaders[minIndex].queued) {
+        if (Math.ceil(loaders[i].queued / config.thresholdResolution) >= threshold) continue;
+        if (minIndex == -1 || Math.ceil(loaders[i].queued / config.thresholdResolution) < minValue) {
             minIndex = i;
+            minValue = Math.ceil(loaders[i].queued / config.thresholdResolution);
         }
     }
 
