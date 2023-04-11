@@ -170,6 +170,9 @@ function tick(shouldUpdateDOM) {
     loaders.forEach(loader => {
         if (loader.queued <= 0) {
             loader.progress = 0;
+            if (shouldUpdateDOM) {
+                loader.labelElement.innerText = "Loader " + (loader.id + 1) + " (0)";
+            }
             return;
         }
 
