@@ -6,44 +6,120 @@ const config = {
     running: true,
     logarithmicSimulationSpeed: 0,
     seed: "0000000000",
-    loaderSpeed: 4,
-    thresholdSize: 27,
-    thresholdResolution: 1,
-    findMinimum: false
+    loaderSpeed: 8,
+    hasQueue: false,
+    hasLoadBalancing: false,
+    weightedThresholds: false,
+    idealBalancing: false,
+    sequence: "",
+    tick: () => {
+        tick(true);
+    },
+    reset: () => {
+        resetSim();
+    }
+}
+
+const colordict = {
+    "brown": "#8B4513",
+    "red": "#FF0000",
+    "orange": "#FFA500",
+    "yellow": "#FFFF00",
+    "green": "#008000",
+    "blue": "#0000FF",
+    "purple": "#800080",
+    "pink": "#FFC0CB",
+    "gray": "#808080",
+    "black": "#000000",
+    "white": "#FFFFFF",
+    "cyan": "#00FFFF",
+    "magenta": "#FF00FF",
+    "lime": "#00FF00",
+    "olive": "#808000",
+    "maroon": "#800000",
+    "navy": "#000080",
+    "teal": "#008080",
+    "silver": "#C0C0C0",
+    "indigo": "#4B0082",
+    "violet": "#EE82EE",
+    "turquoise": "#40E0D0",
+    "tan": "#D2B48C",
+    "salmon": "#FA8072",
+    "plum": "#DDA0DD",
+    "orchid": "#DA70D6",
+    "khaki": "#F0E68C",
+    "gold": "#FFD700",
+    "fuchsia": "#FF00FF",
+    "coral": "#FF7F50",
+    "crimson": "#DC143C",
 }
 
 let controls = gui.addFolder("Simulation Controls");
 
 controls.add(config, 'running').onChange(onRunningChange);
+controls.add(config, 'tick');
+controls.add(config, 'reset');
 controls.add(config, 'logarithmicSimulationSpeed', 0, 8, 0.1);
 
 let simulationConfig = gui.addFolder("Simulation Config");
 simulationConfig.add(config, 'seed').onChange(onConfigChange);
+simulationConfig.add(config, 'sequence').onChange(onConfigChange);
 simulationConfig.add(config, 'loaderSpeed', 1, 8, 1).onChange(onConfigChange);
-simulationConfig.add(config, 'thresholdSize', 1, 100, 1).onChange(onConfigChange);
-simulationConfig.add(config, 'thresholdResolution', 1, 100, 1).onChange(onConfigChange);
-simulationConfig.add(config, 'findMinimum').onChange(onConfigChange);
+simulationConfig.add(config, 'hasQueue').onChange(onConfigChange);
+simulationConfig.add(config, 'hasLoadBalancing').onChange(onConfigChange);
+simulationConfig.add(config, 'weightedThresholds').onChange(onConfigChange);
+simulationConfig.add(config, 'idealBalancing').onChange(onConfigChange);
 gui.width = 500;
 
 let rng;
 let rngColor;
-let loaders;
+let loaders = [];
+let latencies = 0;
+let latencyCounter = 0;
+let throughputs = 0;
 let taskCounter = 0;
 let currentTask = null;
+let sequence = [];
 
 function onConfigChange() {
     resetSim();
 }
+function stringToRGB(str) {
+    if (!str) {
+        return null;
+    }
 
+    return {
+        r: parseInt(str.substr(1, 2), 16),
+        g: parseInt(str.substr(3, 2), 16),
+        b: parseInt(str.substr(5, 2), 16),
+    }
+}
 function getNewTask() {
-    let size = Math.floor(rng.random() * 27) + 1;
     let task = {
-        id: taskCounter++,
-        input: size,
+        id: ++taskCounter,
+        input: 0,
         processed: 0,
         output: 0,
-        color: getRandomColor()
+        color: {},
+        latency: 0,
+        duration: 0,
     }
+
+    if (sequence.length > 0) {
+        let qt = sequence[0];
+        task.input = qt.size;
+
+        if (qt.size !== -1) {
+            sequence.shift();
+            task.color = qt.color || getRandomColor();
+        }
+
+    } else {
+        task.input = Math.floor(rng.random() * 27) + 1;
+        task.color = getRandomColor();
+    }
+
     return task;
 }
 
@@ -61,8 +137,13 @@ function getRandomColor() {
 }
 
 let tickCounter = 0;
+let swapCounter = 0;
 let loaderContainer = document.getElementById("loaders");
 let splitterContainer = document.getElementById("splitter");
+let averageLatencyElement = document.getElementById("averagelat");
+let averageThroughputElement = document.getElementById("averagethr");
+let ticksElement = document.getElementById("ticks");
+
 let splitterTasks;
 function resetSim() {
     rng = new MersenneTwister(config.seed.split("").map(c => parseInt(c)));
@@ -80,31 +161,74 @@ function resetSim() {
     splitterTasks.classList.add("tasks");
     splitterContainer.appendChild(splitterTasks);
 
-    loaders = [];
+    loaders.length = 0;
+    latencies = 0;
+    throughputs = 0;
     taskCounter = 0;
     tickCounter = 0;
+    latencyCounter = 0;
     currentTask = null;
+
+    sequence = [];
+    config.sequence.split(",").forEach(s => {
+        s = s.trim();
+        if (!s) return;
+        s = s.split("/");
+        sequence.push({
+            size: parseInt(s[0]),
+            color: stringToRGB(colordict[s[1]])
+        });
+    });
+
+    let minRequired = Math.ceil(31.5 / config.loaderSpeed);
+    for (let i = 0; i < minRequired; i++) {
+        createLoader();
+    }
 }
 
 function getNextLoader() {
-    let minIndex = -1
-    let threshold = Math.ceil(config.thresholdSize / config.thresholdResolution);
-    let minValue = -1;
-    for (let i = 0; i < loaders.length; i++) {
-        if (Math.ceil(loaders[i].queued / config.thresholdResolution) >= threshold) continue;
-        if (minIndex == -1 || Math.ceil(loaders[i].queued / config.thresholdResolution) < minValue) {
-            minIndex = i;
-            minValue = Math.ceil(loaders[i].queued / config.thresholdResolution);
-            if (!config.findMinimum) {
-                break;
+
+    if (config.idealBalancing) {
+
+        let min = loaders[0];
+        for (let i = 1; i < loaders.length; i++) {
+            if (loaders[i].queued < min.queued) {
+                min = loaders[i];
+            }
+        }
+
+        return min;
+    } else {
+        if (config.hasLoadBalancing) {
+            for (let i = 0; i < loaders.length; i++) {
+                if (loaders[i].queued <= 0) {
+                    return loaders[i];
+                }
+            }
+        }
+
+        for (let i = 0; i < loaders.length; i++) {
+            if (config.hasQueue) {
+                let cutoff = ((i <= (loaders.length >> 1)) && config.weightedThresholds) ? 11 : 21;
+                if (loaders[i].queued < cutoff) {
+                    return loaders[i];
+                }
+            } else {
+                if (loaders[i].queued <= 0) {
+                    return loaders[i];
+                }
             }
         }
     }
 
-    if (minIndex != -1) {
-        return loaders[minIndex];
+    if (config.hasQueue) {
+        return loaders[loaders.length - 1];
     }
 
+    return createLoader();
+}
+
+function createLoader() {
     let loader = {
         id: loaders.length,
         queued: 0,
@@ -127,10 +251,8 @@ function getNextLoader() {
     loader.element.appendChild(loader.taskListElement);
 
     loaders.push(loader);
-
     return loader;
 }
-
 
 function createLoaderRenderElements(task) {
     if (task.isRenderingInLoader) throw new Error("bad call")
@@ -141,29 +263,38 @@ function createLoaderRenderElements(task) {
     task.loaderElement.style.backgroundColor = `rgb(${task.color.r}, ${task.color.g}, ${task.color.b})`;
     task.loader.taskListElement.appendChild(task.loaderElement);
 }
-function tick(shouldUpdateDOM) {
 
-    if (tickCounter % 2 == 0) { // half-speed
-        if (!currentTask || currentTask.input <= 0) {
-            if (currentTask) {
-                if (currentTask.splitterElement) splitterTasks.removeChild(currentTask.splitterElement);
-                currentTask.splitterElement = null;
-            }
-            currentTask = getNewTask();
-            currentTask.loader = getNextLoader();
-            currentTask.loader.taskQueue.push(currentTask);
+function simulateSplitter(shouldUpdateDOM) {
+    if (!currentTask || currentTask.input <= 0) {
+        if (currentTask) {
+            if (currentTask.splitterElement) splitterTasks.removeChild(currentTask.splitterElement);
+            currentTask.splitterElement = null;
         }
+        currentTask = getNewTask();
+        if (currentTask.input < 0) {
 
-        if (!currentTask.isRenderingInSplitter && shouldUpdateDOM) {
-            currentTask.isRenderingInSplitter = true;
-            currentTask.splitterElement = document.createElement("div");
-            currentTask.splitterElement.classList.add("task");
-            currentTask.splitterElement.innerText = currentTask.id;
-            currentTask.splitterElement.style.backgroundColor = `rgb(${currentTask.color.r}, ${currentTask.color.g}, ${currentTask.color.b})`;
-            splitterTasks.appendChild(currentTask.splitterElement);
+            return;
         }
+        currentTask.loader = getNextLoader();
+        currentTask.loader.taskQueue.push(currentTask);
+       // if (currentTask.input > 1)
+            swapCounter = 63;
+    }
 
+    if (!currentTask.isRenderingInSplitter && shouldUpdateDOM) {
+        currentTask.isRenderingInSplitter = true;
+        currentTask.splitterElement = document.createElement("div");
+        currentTask.splitterElement.classList.add("task");
+        currentTask.splitterElement.innerText = currentTask.id;
+        currentTask.splitterElement.style.backgroundColor = `rgb(${currentTask.color.r}, ${currentTask.color.g}, ${currentTask.color.b})`;
+        splitterTasks.appendChild(currentTask.splitterElement);
+        currentTask.splitterElement.style.width = currentTask.input * widthRatio + "px";
+    }
 
+    if (swapCounter <= 0) {
+        swapCounter = 63; // kindof useless rn
+    } else {
+        swapCounter--;
         currentTask.loader.queued++;
         currentTask.input--;
         currentTask.processed++;
@@ -176,6 +307,14 @@ function tick(shouldUpdateDOM) {
             currentTask.loaderElement.style.width = Math.ceil((currentTask.processed - (currentTask.loader.progress / 64)) * widthRatio) + "px";
         }
     }
+}
+function tick(shouldUpdateDOM) {
+
+    if (tickCounter % 2 == 0) { // half-speed
+        simulateSplitter(shouldUpdateDOM);
+    }
+
+    let throughput = 0;
 
     loaders.forEach(loader => {
         if (loader.queued <= 0) {
@@ -187,10 +326,10 @@ function tick(shouldUpdateDOM) {
         }
 
         loader.progress += config.loaderSpeed;
+        throughput += config.loaderSpeed;
 
         while (loader.progress >= 64) {
             loader.progress = loader.progress - 64;
-
             loader.queued--;
             loader.taskQueue[0].processed--;
             loader.taskQueue[0].output++;
@@ -198,10 +337,16 @@ function tick(shouldUpdateDOM) {
             if (loader.taskQueue[0].processed <= 0) {
                 if (loader.taskQueue[0].isRenderingInLoader)
                     loader.taskListElement.removeChild(loader.taskQueue[0].loaderElement);
+                latencies = (latencies * latencyCounter + loader.taskQueue[0].latency) / (latencyCounter + 1);
+                latencyCounter++;
                 loader.taskQueue.shift();
             }
         }
 
+
+        for (let i = 1; i < loader.taskQueue.length; i++) {
+            loader.taskQueue[i].latency++;
+        }
 
         if (shouldUpdateDOM) {
 
@@ -220,6 +365,14 @@ function tick(shouldUpdateDOM) {
             }
         }
     });
+
+    throughputs = (throughputs * tickCounter + throughput) / (tickCounter + 1);
+
+    if (shouldUpdateDOM) {
+        averageLatencyElement.innerText = (latencies / 2.5).toFixed(4) + "s";
+        averageThroughputElement.innerText = throughputs.toFixed(4) + "hs";
+        ticksElement.innerText = (tickCounter * 8) + " ticks";
+    }
     tickCounter++;
 }
 

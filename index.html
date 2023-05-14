@@ -2,31 +2,42 @@
 <html>
     <head>
 
-
         <style>
             body {
                 padding: 5px 20px;
+                font-family: Arial, Helvetica, sans-serif;
             }
             #splitter {
                 height: 60px;
             }
             #loaders > div {
-                height: 50px;
+                height: 55px;
             }
             .task {
                 margin-top: 5px;
                 display: inline-block;
-                padding: 4px;
+                padding: 4px 0px;
+                text-indent: 4px;
+                border: 1px solid rgba(0,0,0,0.2);
             }
         </style>
     </head>
     <body>
         <h2>Ideal Splitter Load Balancing Simulator</h2>
         <p>Adjust configs on the right.
-           <br>The loaderSpeed is the speed of each individual loader in hopperspeed.
-           <br>The thresholdSize is the threshold (in item stacks) at which a new loader is created.
-           <br>The thresholdResolution is the resolution of the threshold (in item stacks).</p>
+           <br>- The loaderSpeed is the speed of each individual loader in hopperspeed.
+           <br>- hasQueue controls whether the loaders have queues or not.
+           <br>- hasLoadBalancing controls whether latency reducing load balancing algorithm is used.
+           <br>- weightedThresholds lowers the busy thresholds for the first half of loaders.</p>
 
+        <div class="info">
+            Ticks: <span id="ticks"></span>
+            <br>
+            Average Throughput: <span id="averagethr"></span>
+            <br>
+            Average Latency: <span id="averagelat"></span>
+        </div>
+        <br>
         <div id="splitter">
 
         </div>
