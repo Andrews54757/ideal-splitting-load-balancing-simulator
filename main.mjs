@@ -277,8 +277,8 @@ function simulateSplitter(shouldUpdateDOM) {
         }
         currentTask.loader = getNextLoader();
         currentTask.loader.taskQueue.push(currentTask);
-       // if (currentTask.input > 1)
-            swapCounter = 63;
+        swapCounter = 63;
+        return;
     }
 
     if (!currentTask.isRenderingInSplitter && shouldUpdateDOM) {
